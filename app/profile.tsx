@@ -1,0 +1,20 @@
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Redirect, useRouter } from "expo-router";
+import { api, User } from "../src/api";
+import { authToken, clearAuthToken } from "../src/session";
+
+const interestOptions = ["food", "nature", "culture", "adventure", "nightlife", "relaxation"];
+
+export default function Profile() {
+  const router = useRouter(); const [user, setUser] = useState<User | null>(null); const [city, setCity] = useState(""); const [interests, setInterests] = useState<string[]>([]); const [busy, setBusy] = useState(true); const [saved, setSaved] = useState(false);
+  const token = authToken;
+  useEffect(() => { if (!token) return; api.me(token).then((value) => { setUser(value); setCity(value.home_city || ""); setInterests(value.interests || []); }).finally(() => setBusy(false)); }, [token]);
+  if (!token) return <Redirect href="/" />;
+  async function save() { if (!authToken) return; setBusy(true); const value = await api.updateMe(authToken, { home_city: city, interests }); setUser(value); setSaved(true); setBusy(false); }
+  function signOut() { clearAuthToken(); router.replace("/"); }
+  if (busy && !user) return <View style={styles.center}><ActivityIndicator color="#d95a41" /></View>;
+  return <SafeAreaView style={styles.safe}><View style={styles.page}><View style={styles.nav}><Pressable onPress={() => router.push("/planner")}><Text style={styles.back}>Plan</Text></Pressable><Text style={styles.title}>Profile</Text><Pressable onPress={() => router.push("/trips")}><Text style={styles.back}>Trips</Text></Pressable></View><View style={styles.content}><Text style={styles.name}>{user?.name}</Text><Text style={styles.email}>{user?.email}</Text><Text style={styles.label}>Home city</Text><TextInput placeholder="Where are you based?" value={city} onChangeText={setCity} style={styles.input} /><Text style={styles.label}>Interests</Text><View style={styles.tags}>{interestOptions.map((interest) => <Pressable key={interest} onPress={() => setInterests((current) => current.includes(interest) ? current.filter((item) => item !== interest) : [...current, interest])} style={[styles.tag, interests.includes(interest) && styles.tagSelected]}><Text style={interests.includes(interest) ? styles.tagTextSelected : styles.tagText}>{interest}</Text></Pressable>)}</View><Pressable style={styles.button} onPress={save}><Text style={styles.buttonText}>{saved ? "Saved" : "Save preferences"}</Text></Pressable><Pressable onPress={signOut}><Text style={styles.signOut}>Sign out</Text></Pressable></View></View></SafeAreaView>;
+}
+
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: "#f9f6f0" }, center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f9f6f0" }, page: { flex: 1, maxWidth: 760, width: "100%", alignSelf: "center" }, nav: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 24, borderBottomWidth: 1, borderBottomColor: "#e5e0d8" }, title: { fontSize: 22, fontWeight: "700", color: "#1a1a1a" }, back: { color: "#b5412a", fontWeight: "600" }, content: { padding: 24 }, name: { fontSize: 30, fontWeight: "700", color: "#1a1a1a" }, email: { color: "#6b6b6b", marginTop: 4, marginBottom: 30 }, label: { color: "#333", fontWeight: "600", marginTop: 14, marginBottom: 8 }, input: { borderColor: "#d7d0c5", borderWidth: 1, borderRadius: 10, padding: 13, backgroundColor: "#fff" }, tags: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, tag: { borderColor: "#d7d0c5", borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9 }, tagSelected: { backgroundColor: "#4f7054", borderColor: "#4f7054" }, tagText: { color: "#333" }, tagTextSelected: { color: "#fff" }, button: { backgroundColor: "#d95a41", borderRadius: 10, minHeight: 48, alignItems: "center", justifyContent: "center", marginTop: 28 }, buttonText: { color: "#fff", fontWeight: "600" }, signOut: { color: "#b23a3a", textAlign: "center", marginTop: 28 } });

@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "NOW: not ordinary weekend",
+    "slug": "now-travel",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "now",
+    "plugins": ["expo-router", "expo-location"],
+    "web": { "bundler": "metro" }
+  }
+}
