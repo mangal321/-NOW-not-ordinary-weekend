@@ -40,3 +40,4 @@ curl -X POST http://127.0.0.1:8000/api/auth/signup \
 ```
 # -NOW-not-ordinary-weekend
 # -NOW-not-ordinary-weekend
+# -NOW-not-ordinary-weekend
