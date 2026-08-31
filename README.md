@@ -39,3 +39,4 @@ curl -X POST http://127.0.0.1:8000/api/auth/signup \
   -d '{"email":"you@example.com","password":"secret123","name":"Your Name"}'
 ```
 # -NOW-not-ordinary-weekend
+# -NOW-not-ordinary-weekend
