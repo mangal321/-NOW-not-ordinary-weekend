@@ -12,6 +12,7 @@ import { useRouter } from "expo-router";
 import { authToken } from "../src/session";
 import { colors, common, radius, spacing, type } from "../src/theme";
 import { Button } from "../src/components/Button";
+import Grainient from "../src/components/Grainient";
 import { Logo } from "../src/components/Logo";
 
 const FEATURES = [
@@ -74,7 +75,21 @@ export default function Landing() {
           </View>
 
           {/* Hero */}
-          <View style={[styles.hero, wide && styles.heroWide]}>
+          <View style={styles.stage}>
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Grainient
+                color1="#E8B34B"
+                color2="#7A4A12"
+                color3="#0A0C10"
+                timeSpeed={0.3}
+                warpStrength={0.9}
+                contrast={1.25}
+                saturation={1.05}
+                grainAmount={0.08}
+              />
+            </View>
+            <View style={[StyleSheet.absoluteFill, styles.stageOverlay]} pointerEvents="none" />
+            <View style={[styles.hero, wide && styles.heroWide]}>
             <View style={styles.heroCopy}>
               <Text style={common.kicker}>NOT ORDINARY WEEKEND</Text>
               <Text style={[styles.heroTitle, wide && styles.heroTitleWide]}>
@@ -117,6 +132,7 @@ export default function Landing() {
               <Pressable onPress={() => router.push("/signup")} accessibilityRole="button" style={styles.cardLink}>
                 <Text style={styles.cardLinkText}>Plan mine →</Text>
               </Pressable>
+            </View>
             </View>
           </View>
 
@@ -172,8 +188,17 @@ const styles = StyleSheet.create({
   navLinks: { flexDirection: "row", alignItems: "center", gap: 22 },
   navLink: { color: colors.muted, fontSize: type.small, fontWeight: "600" },
   navCta: { minHeight: 42, paddingHorizontal: 18 },
-  hero: { marginTop: spacing.xl, gap: spacing.xl },
-  heroWide: { flexDirection: "row", alignItems: "center", gap: spacing.xl, marginTop: spacing.xxl },
+  hero: { gap: spacing.xl },
+  heroWide: { flexDirection: "row", alignItems: "center", gap: spacing.xl },
+  stage: {
+    marginTop: spacing.xl,
+    borderRadius: 28,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    padding: spacing.lg,
+  },
+  stageOverlay: { backgroundColor: "rgba(10, 12, 16, 0.62)" },
   heroCopy: { flex: 1.2 },
   heroTitle: { color: colors.text, fontSize: type.display, fontWeight: "800", lineHeight: 44, marginTop: 14 },
   heroTitleWide: { fontSize: type.hero, lineHeight: 58 },

@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, common, radius, spacing, type } from "../src/theme";
 import { Button } from "../src/components/Button";
+import Grainient from "../src/components/Grainient";
 import { Logo } from "../src/components/Logo";
 
 const SLIDES = [
@@ -50,6 +51,20 @@ export default function Onboarding() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Grainient
+          color1="#D9A441"
+          color2="#4A3312"
+          color3="#0A0C10"
+          timeSpeed={0.22}
+          warpStrength={0.8}
+          contrast={1.2}
+          saturation={1.0}
+          grainAmount={0.08}
+          zoom={1.1}
+        />
+      </View>
+      <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="none" />
       <View style={styles.page}>
         <View style={styles.top}>
           <Pressable onPress={() => router.replace("/")} accessibilityRole="button">
@@ -103,6 +118,7 @@ export default function Onboarding() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   page: { flex: 1, maxWidth: 640, width: "100%", alignSelf: "center", padding: spacing.lg },
+  overlay: { backgroundColor: "rgba(10, 12, 16, 0.7)" },
   top: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   skip: { color: colors.muted, fontSize: type.small, fontWeight: "600" },
   slide: { flex: 1, justifyContent: "center", alignItems: "flex-start" },
