@@ -29,7 +29,7 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else None
         headers = {k: v for k, v in self.headers.items()
-                   if k.lower() in ("content-type", "authorization", "accept")}
+                   if k.lower() in ("content-type", "authorization", "x-now-token", "accept")}
         req = urllib.request.Request(url, data=body, headers=headers, method=self.command)
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:

@@ -4,13 +4,13 @@ import hmac
 import json
 import os
 import secrets
+from pathlib import Path
 from typing import Any, Optional
 
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -19,11 +19,38 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 SECRET = os.getenv("JWT_SECRET", "local-development-secret")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 claude = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"]) if os.getenv("ANTHROPIC_API_KEY") else None
+
+# --- Simple JSON persistence so restarts don't orphan accounts/trips. ---
+DB_PATH = Path(os.getenv("DB_PATH", str(Path(__file__).resolve().parent / "now_db.json")))
 users: dict[str, dict[str, Any]] = {}
 trips: dict[str, dict[str, Any]] = {}
 expenses: dict[str, dict[str, Any]] = {}
 sessions: dict[str, list[dict[str, str]]] = {}
-auth_scheme = HTTPBearer(auto_error=False)
+
+
+def load_db() -> None:
+    try:
+        if not DB_PATH.exists():
+            return
+        data = json.loads(DB_PATH.read_text())
+        users.update(data.get("users", {}))
+        trips.update(data.get("trips", {}))
+        expenses.update(data.get("expenses", {}))
+        sessions.update(data.get("sessions", {}))
+    except Exception as error:
+        print(f"Warning: could not load {DB_PATH}: {error}. Starting with empty stores.")
+
+
+def save_db() -> None:
+    try:
+        tmp = DB_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"users": users, "trips": trips, "expenses": expenses, "sessions": sessions}))
+        tmp.replace(DB_PATH)
+    except Exception as error:
+        print(f"Warning: could not save {DB_PATH}: {error}")
+
+
+load_db()
 
 class Signup(BaseModel):
     email: str
@@ -57,8 +84,10 @@ def digest(value: str) -> str:
 
 
 # Local demo account so the first run has a usable login flow.
-demo_user = {"id": "local-demo", "email": "vedant@gamil.com", "name": "Vedant", "interests": [], "home_city": None, "password": digest("123456")}
-users[demo_user["id"]] = demo_user
+if "local-demo" not in users:
+    demo_user = {"id": "local-demo", "email": "vedant@gamil.com", "name": "Vedant", "interests": [], "home_city": None, "password": digest("123456")}
+    users[demo_user["id"]] = demo_user
+    save_db()
 
 
 def public(user: dict[str, Any]) -> dict[str, Any]:
@@ -72,10 +101,27 @@ def token(user_id: str) -> str:
     return f"{payload}.{signature}"
 
 
-def user_from_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(auth_scheme)) -> dict[str, Any]:
-    if not credentials:
+def raw_token(request: Request) -> Optional[str]:
+    """Read the auth token from X-NOW-Token (preferred) or Authorization: Bearer.
+
+    Some hosting proxies strip the Authorization header; the custom header
+    survives them. Both carry the same opaque token.
+    """
+    custom = (request.headers.get("x-now-token") or "").strip()
+    if custom:
+        return custom
+    auth = (request.headers.get("authorization") or "").strip()
+    scheme, _, credentials = auth.partition(" ")
+    if scheme.lower() == "bearer" and credentials.strip():
+        return credentials.strip()
+    return None
+
+
+def user_from_token(request: Request) -> dict[str, Any]:
+    raw = raw_token(request)
+    if not raw:
         raise HTTPException(401, "Authentication required")
-    parts = credentials.credentials.split(".")
+    parts = raw.split(".")
     if len(parts) != 3:
         raise HTTPException(401, "Invalid token")
     user_id, expires, signature = parts
@@ -158,6 +204,7 @@ async def signup(payload: Signup) -> dict[str, Any]:
         raise HTTPException(409, "Email already registered")
     user = {"id": secrets.token_urlsafe(12), "email": email, "name": payload.name.strip(), "interests": [], "home_city": None, "password": digest(payload.password)}
     users[user["id"]] = user
+    save_db()
     return {"token": token(user["id"]), "user": public(user)}
 
 
@@ -177,6 +224,7 @@ async def me(user: dict[str, Any] = Depends(user_from_token)) -> dict[str, Any]:
 @app.patch("/api/auth/me")
 async def update_me(payload: Profile, user: dict[str, Any] = Depends(user_from_token)) -> dict[str, Any]:
     user.update(payload.model_dump())
+    save_db()
     return public(user)
 
 
@@ -191,6 +239,7 @@ async def chat(payload: Chat, user: dict[str, Any] = Depends(user_from_token)) -
     except Exception as error:
         raise HTTPException(502, "Claude is unavailable right now. Please try again.") from error
     history.extend([{"role": "user", "content": payload.message}, {"role": "assistant", "content": reply}])
+    save_db()
     return {"reply": reply, "itinerary": plan, "provider": "claude" if claude else "local"}
 
 
@@ -203,6 +252,7 @@ async def history(session_id: str, user: dict[str, Any] = Depends(user_from_toke
 async def create_trip(data: dict[str, Any], user: dict[str, Any] = Depends(user_from_token)) -> dict[str, Any]:
     trip = {"id": secrets.token_urlsafe(12), "user_id": user["id"], "itinerary": data, "created_at": datetime.now(timezone.utc).isoformat()}
     trips[trip["id"]] = trip
+    save_db()
     return trip
 
 
@@ -225,6 +275,7 @@ async def delete_trip(trip_id: str, user: dict[str, Any] = Depends(user_from_tok
     if not trip or trip["user_id"] != user["id"]:
         raise HTTPException(404, "Trip not found")
     del trips[trip_id]
+    save_db()
     return {"deleted": True}
 
 
@@ -235,6 +286,7 @@ async def add_expense(trip_id: str, payload: Expense, user: dict[str, Any] = Dep
         raise HTTPException(404, "Trip not found")
     item = {"id": secrets.token_urlsafe(12), "trip_id": trip_id, **payload.model_dump()}
     expenses[item["id"]] = item
+    save_db()
     return item
 
 
@@ -253,4 +305,5 @@ async def delete_expense(expense_id: str, user: dict[str, Any] = Depends(user_fr
     if not item or not trip or trip["user_id"] != user["id"]:
         raise HTTPException(404, "Expense not found")
     del expenses[expense_id]
+    save_db()
     return {"deleted": True}

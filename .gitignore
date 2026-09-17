@@ -17,6 +17,10 @@ venv/
 .env2
 *.local
 
+# Local backend database (JSON file store — accounts, trips, expenses)
+now_db.json
+now_db.tmp
+
 # OS / editor
 .DS_Store
 *.swp

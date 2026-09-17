@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { api } from "../src/api";
-import { setAuthToken } from "../src/session";
+import { consumeSessionExpired, setAuthToken } from "../src/session";
 import { colors, type } from "../src/theme";
 import { AuthShell } from "../src/components/AuthShell";
 import { Button } from "../src/components/Button";
@@ -14,6 +14,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [notice] = useState(() => consumeSessionExpired());
 
   async function submit() {
     if (!email.trim() || !password) {
@@ -47,6 +48,11 @@ export default function Login() {
         </Text>
       }
     >
+      {notice ? (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>Your session expired. Please sign in again to continue.</Text>
+        </View>
+      ) : null}
       {error ? (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>{error}</Text>
@@ -79,6 +85,15 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
+  notice: {
+    backgroundColor: colors.goldSoft,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  noticeText: { color: colors.gold, fontSize: type.small, lineHeight: 20 },
   banner: {
     backgroundColor: colors.dangerSoft,
     borderWidth: 1,

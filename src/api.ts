@@ -1,3 +1,5 @@
+import { handleUnauthorized } from "./session";
+
 const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
@@ -5,12 +7,19 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Belt and suspenders: some hosting proxies strip Authorization,
+      // so the token also travels in X-NOW-Token. The backend accepts either.
+      ...(token ? { Authorization: `Bearer ${token}`, "X-NOW-Token": token } : {}),
       ...(options.headers ?? {}),
     },
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.detail ?? `Request failed (${response.status})`);
+  const data = (await response.json().catch(() => ({}))) as { detail?: string };
+  if (!response.ok) {
+    // A 401 on a call that carried a token means the session died server-side
+    // (restart, expiry, deleted user) — bounce to login instead of stranding.
+    if (response.status === 401 && token) handleUnauthorized();
+    throw new Error(data.detail ?? `Request failed (${response.status})`);
+  }
   return data as T;
 }
 
