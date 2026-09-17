@@ -5,7 +5,9 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "now",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0C10",
     "plugins": ["expo-router", "expo-location"],
-    "web": { "bundler": "metro" }
+    "web": { "bundler": "metro", "backgroundColor": "#0A0C10" }
   }
 }

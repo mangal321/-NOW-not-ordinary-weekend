@@ -10,7 +10,7 @@ export default function Profile() {
   const router = useRouter(); const [user, setUser] = useState<User | null>(null); const [city, setCity] = useState(""); const [interests, setInterests] = useState<string[]>([]); const [busy, setBusy] = useState(true); const [saved, setSaved] = useState(false);
   const token = authToken;
   useEffect(() => { if (!token) return; api.me(token).then((value) => { setUser(value); setCity(value.home_city || ""); setInterests(value.interests || []); }).finally(() => setBusy(false)); }, [token]);
-  if (!token) return <Redirect href="/" />;
+  if (!token) return <Redirect href="/login" />;
   async function save() { if (!authToken) return; setBusy(true); const value = await api.updateMe(authToken, { home_city: city, interests }); setUser(value); setSaved(true); setBusy(false); }
   function signOut() { clearAuthToken(); router.replace("/"); }
   if (busy && !user) return <View style={styles.center}><ActivityIndicator color="#d95a41" /></View>;
