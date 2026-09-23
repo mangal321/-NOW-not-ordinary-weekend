@@ -6,7 +6,8 @@
   "scripts": {
     "start": "expo start",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "export:web": "expo export --platform web && python3 scripts/inject-head.py"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

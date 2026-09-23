@@ -173,6 +173,13 @@ export default function Landing() {
             <Button title="Start planning — it's free" arrow onPress={() => router.push("/signup")} style={styles.bandCta} />
           </View>
 
+          <View style={styles.footerLinks}>
+            <Pressable onPress={() => router.push("/legal")} accessibilityRole="button">
+              <Text style={styles.footerLink}>Privacy & terms</Text>
+            </Pressable>
+            <Text style={styles.footerDot}>·</Text>
+            <Text style={styles.footerLink} onPress={() => {}}>© 2026 NOW</Text>
+          </View>
           <Text style={styles.footer}>NOW · Not Ordinary Weekend · Crafted for spontaneous souls ✦</Text>
         </View>
       </ScrollView>
@@ -278,4 +285,7 @@ const styles = StyleSheet.create({
   bandSub: { color: colors.muted, fontSize: type.body, marginTop: 8, marginBottom: spacing.md, textAlign: "center" },
   bandCta: { minWidth: 280 },
   footer: { color: colors.faint, fontSize: type.small, textAlign: "center", marginTop: spacing.xxl, marginBottom: spacing.md },
+  footerLinks: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10, marginTop: spacing.xxl },
+  footerLink: { color: colors.muted, fontSize: type.caption, fontWeight: "700" },
+  footerDot: { color: colors.faint, fontSize: type.caption },
 });

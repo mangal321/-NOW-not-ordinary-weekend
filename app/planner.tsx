@@ -58,6 +58,8 @@ export default function Planner() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [tripWindow, setTripWindow] = useState<TripWindow>(() => defaultTripWindow());
+  // One conversation per visit so follow-ups ("make it cheaper") keep context.
+  const sessionRef = useRef(`now-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
   if (!authToken) return <Redirect href="/login" />;
 
@@ -71,7 +73,7 @@ export default function Planner() {
     setPlan(null);
     setSaved(false);
     try {
-      const result = await api.chat(authToken, `session-${Date.now()}`, text);
+      const result = await api.chat(authToken, sessionRef.current, text);
       setReply(result.reply);
       setPlan(result.itinerary as Itinerary);
       setPlanId((n) => n + 1);
@@ -225,7 +227,7 @@ export default function Planner() {
                     ) : (
                       <View style={styles.saveRow}>
                         <Button title="Save this itinerary" arrow loading={saving} onPress={saveTrip} style={styles.saveBtn} />
-                        <Button title="Start over" variant="ghost" onPress={() => { setPlan(null); setReply(""); setMessage(""); }} />
+                        <Button title="Start over" variant="ghost" onPress={() => { setPlan(null); setReply(""); setMessage(""); sessionRef.current = `now-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }} />
                       </View>
                     )
                   }
