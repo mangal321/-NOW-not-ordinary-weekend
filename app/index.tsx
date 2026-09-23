@@ -78,14 +78,15 @@ export default function Landing() {
           <View style={styles.stage}>
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
               <Grainient
-                color1="#E8B34B"
-                color2="#7A4A12"
-                color3="#0A0C10"
+                color1="#FFC98F"
+                color2="#FF7E67"
+                color3="#5FBFAE"
+                lightMode
                 timeSpeed={0.3}
                 warpStrength={0.9}
-                contrast={1.25}
+                contrast={1.1}
                 saturation={1.05}
-                grainAmount={0.08}
+                grainAmount={0.06}
               />
             </View>
             <View style={[StyleSheet.absoluteFill, styles.stageOverlay]} pointerEvents="none" />
@@ -198,7 +199,7 @@ const styles = StyleSheet.create({
     borderColor: colors.goldBorder,
     padding: spacing.lg,
   },
-  stageOverlay: { backgroundColor: "rgba(10, 12, 16, 0.62)" },
+  stageOverlay: { backgroundColor: "rgba(250, 247, 241, 0.42)" },
   heroCopy: { flex: 1.2 },
   heroTitle: { color: colors.text, fontSize: type.display, fontWeight: "800", lineHeight: 44, marginTop: 14 },
   heroTitleWide: { fontSize: type.hero, lineHeight: 58 },

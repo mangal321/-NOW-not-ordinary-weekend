@@ -141,8 +141,9 @@ export default function Planner() {
             <BorderGlow
               backgroundColor={colors.surface}
               borderRadius={20}
-              glowColor="36 74 56"
-              colors={["#E2A63B", "#8A5A1D", "#E8B34B"]}
+              glowColor="7 90 62"
+              colors={["#FF8E70", "#FF6B57", "#FFC98F"]}
+              fillOpacity={0.35}
               edgeSensitivity={25}
               glowRadius={36}
               glowIntensity={1.1}

@@ -53,14 +53,15 @@ export default function Onboarding() {
     <SafeAreaView style={styles.safe}>
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Grainient
-          color1="#D9A441"
-          color2="#4A3312"
-          color3="#0A0C10"
+          color1="#FFD9A8"
+          color2="#FF8E70"
+          color3="#79CBBE"
+          lightMode
           timeSpeed={0.22}
           warpStrength={0.8}
-          contrast={1.2}
+          contrast={1.08}
           saturation={1.0}
-          grainAmount={0.08}
+          grainAmount={0.06}
           zoom={1.1}
         />
       </View>
@@ -118,7 +119,7 @@ export default function Onboarding() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   page: { flex: 1, maxWidth: 640, width: "100%", alignSelf: "center", padding: spacing.lg },
-  overlay: { backgroundColor: "rgba(10, 12, 16, 0.7)" },
+  overlay: { backgroundColor: "rgba(250, 247, 241, 0.55)" },
   top: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   skip: { color: colors.muted, fontSize: type.small, fontWeight: "600" },
   slide: { flex: 1, justifyContent: "center", alignItems: "flex-start" },
