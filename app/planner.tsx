@@ -1,66 +1,311 @@
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
+import { ReactNode, useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { Redirect, useRouter } from "expo-router";
 import { api } from "../src/api";
 import { authToken } from "../src/session";
+import { colors, common, radius, spacing, type } from "../src/theme";
+import { AppHeader } from "../src/components/AppHeader";
+import BorderGlow from "../src/components/BorderGlow";
+import { Button } from "../src/components/Button";
+import { Itinerary, ItineraryCard } from "../src/components/ItineraryCard";
+import { ScheduleCard, TripWindow, defaultTripWindow } from "../src/components/ScheduleCard";
+import { ThinkingCard } from "../src/components/ThinkingCard";
 
 const QUICK_PROMPTS = [
   { label: "Hill escape", prompt: "2 days in Mahabaleshwar for a couple under INR 10,000" },
   { label: "Food weekend", prompt: "A food-focused weekend in Tokyo under $900" },
   { label: "Beach reset", prompt: "A relaxed 3-day beach trip with good sunsets" },
+  { label: "Culture dive", prompt: "A culture-packed 2-day weekend in Jaipur under ₹15,000" },
 ];
 
-function AnimatedLogo() {
-  const rotation = useRef(new Animated.Value(0)).current;
-  const arrival = useRef(new Animated.Value(0)).current;
+function FadeIn({ id, children }: { id: number; children: ReactNode }) {
+  const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const animation = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 4200, useNativeDriver: false }));
-    animation.start();
-    Animated.spring(arrival, { toValue: 1, friction: 7, tension: 35, useNativeDriver: false }).start();
-    return () => { animation.stop(); arrival.stopAnimation(); };
-  }, [arrival, rotation]);
-  const spin = rotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
-  const routeX = rotation.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, 12, 0, -12, 0] });
-  const routeY = rotation.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, -5, 0, 5, 0] });
-  const lift = arrival.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
-  const fade = arrival.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
-  return <Animated.View style={[styles.logo, { opacity: fade, transform: [{ translateY: lift }] }]} accessibilityLabel="NOW"><Text style={styles.logoLetter}>N</Text><View style={{ width: 23, height: 24, alignItems: "center", justifyContent: "center", position: "relative" }}><Animated.Text style={[styles.globe, { transform: [{ rotateY: spin }] }]}>🌐</Animated.Text><Animated.Text style={{ position: "absolute", color: "#55735b", fontSize: 18, fontWeight: "800", opacity: 0.9, transform: [{ translateX: routeX }, { translateY: routeY }] }}>•</Animated.Text></View><Text style={styles.logoLetter}>W</Text></Animated.View>;
+    anim.setValue(0);
+    const run = Animated.timing(anim, { toValue: 1, duration: 450, useNativeDriver: true });
+    run.start();
+    return () => run.stop();
+  }, [anim, id]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
 }
 
 export default function Planner() {
   const router = useRouter();
   const [message, setMessage] = useState("");
-  const [reply, setReply] = useState("Tell me the destination, dates, budget, and what you love to do.");
-  const [plan, setPlan] = useState<any | null>(null);
+  const [reply, setReply] = useState("");
+  const [plan, setPlan] = useState<Itinerary | null>(null);
+  const [planId, setPlanId] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [tripWindow, setTripWindow] = useState<TripWindow>(() => defaultTripWindow());
+  // One conversation per visit so follow-ups ("make it cheaper") keep context.
+  const sessionRef = useRef(`now-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
-  async function send() {
-    if (!authToken || !message.trim()) return;
-    setBusy(true); setSaved(false);
-    try { const result = await api.chat(authToken, `session-${Date.now()}`, message.trim()); setReply(result.reply); setPlan(result.itinerary); }
-    catch (value) { setReply(value instanceof Error ? value.message : "Claude is unavailable right now."); }
-    finally { setBusy(false); }
+  if (!authToken) return <Redirect href="/login" />;
+
+  async function send(override?: string) {
+    const base = (override ?? message).trim();
+    if (!authToken || !base || busy) return;
+    const text = `${base} (leave ${tripWindow.start}, return ${tripWindow.end} — ${tripWindow.duration.toLowerCase()})`;
+    setBusy(true);
+    setError("");
+    setReply("");
+    setPlan(null);
+    setSaved(false);
+    try {
+      const result = await api.chat(authToken, sessionRef.current, text);
+      setReply(result.reply);
+      setPlan(result.itinerary as Itinerary);
+      setPlanId((n) => n + 1);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "The concierge is unavailable right now. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function surprise() {
+    const pick = QUICK_PROMPTS[Math.floor(Math.random() * QUICK_PROMPTS.length)];
+    setMessage(pick.prompt);
+    send(pick.prompt);
   }
 
   async function saveTrip() {
-    if (!authToken || !plan) return;
-    setBusy(true);
-    try { await api.createTrip(authToken, plan); setSaved(true); }
-    catch (value) { setReply(value instanceof Error ? value.message : "Could not save this trip"); }
-    finally { setBusy(false); }
+    if (!authToken || !plan || saving || saved) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.createTrip(authToken, { ...plan, window: tripWindow });
+      setSaved(true);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Could not save this trip. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  return <SafeAreaView style={styles.safe}><View style={styles.page}>
-    <View style={styles.nav}><AnimatedLogo /><View style={styles.navLinks}><Pressable accessibilityRole="button" accessibilityLabel="Open SOS safety screen" onPress={() => router.push("/sos")} style={styles.sos}><Text style={styles.sosText}>SOS</Text></Pressable><Pressable onPress={() => router.push("/trips")}><Text style={styles.navText}>Trips</Text></Pressable><Pressable onPress={() => router.push("/map")}><Text style={styles.navText}>Map</Text></Pressable><Pressable onPress={() => router.push("/profile")}><Text style={styles.navText}>Profile</Text></Pressable></View></View>
-    <ScrollView contentContainerStyle={styles.content}>
-      <View style={styles.hero}><View style={styles.sun} /><View style={styles.heroCopy}><Text style={styles.kicker}>THE ESCAPE DESK · 01</Text><Text style={styles.title}>Make this weekend{`\n`}feel farther away.</Text><Text style={styles.subtitle}>Your AI travel concierge for small escapes, big scenery, and plans that leave room for serendipity.</Text></View><View style={styles.route}><View><Text style={styles.routeLabel}>FROM</Text><Text style={styles.routeValue}>Somewhere familiar</Text></View><Text style={styles.routeArrow}>→</Text><View><Text style={styles.routeLabel}>TO</Text><Text style={styles.routeValue}>Somewhere good</Text></View></View></View>
-      <Text style={styles.sectionLabel}>START WITH A FEELING</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>{QUICK_PROMPTS.map((item) => <Pressable key={item.label} style={styles.chip} onPress={() => setMessage(item.prompt)}><Text style={styles.chipDot}>●</Text><Text style={styles.chipText}>{item.label}</Text></Pressable>)}</ScrollView>
-      <View style={styles.composer}><View style={styles.composerTop}><Text style={styles.composerLabel}>DESCRIBE YOUR ESCAPE</Text><Text style={styles.composerHint}>AI assisted</Text></View><TextInput accessibilityLabel="Trip request" multiline placeholder="A quiet hill weekend for two, under ₹10,000..." placeholderTextColor="#938d83" value={message} onChangeText={setMessage} style={styles.input} /><Pressable style={[styles.button, (!message.trim() || busy) && styles.buttonDisabled]} onPress={send} disabled={busy || !message.trim()}>{busy ? <ActivityIndicator color="#fff" /> : <><Text style={styles.buttonText}>Build my itinerary</Text><Text style={styles.buttonArrow}>↗</Text></>}</Pressable></View>
-      <View style={styles.response}><View style={styles.responseMark}><Text style={styles.responseMarkText}>N</Text></View><View style={styles.responseCopy}><Text style={styles.responseLabel}>NOW SAYS</Text><Text style={styles.reply}>{reply}</Text></View></View>
-      {plan ? <View style={styles.plan}><View style={styles.planHeader}><View><Text style={styles.planEyebrow}>YOUR FIRST DRAFT</Text><Text style={styles.planTitle}>{plan.trip_title}</Text><Text style={styles.destination}>{plan.destination}</Text></View><View style={styles.budgetBadge}><Text style={styles.budgetValue}>{plan.currency} {plan.total_budget}</Text><Text style={styles.budgetLabel}>{plan.duration_days} days</Text></View></View><Text style={styles.summary}>{plan.summary}</Text>{(plan.days || []).map((day: any) => <View key={day.day_number} style={styles.day}><View style={styles.dayBadge}><Text style={styles.dayNumber}>0{day.day_number}</Text></View><View style={styles.dayBody}><Text style={styles.dayTitle}>{day.title}</Text>{(day.activities || []).map((activity: any) => <View key={activity.title} style={styles.activity}><Text style={styles.activityTime}>{activity.time}</Text><View><Text style={styles.activityTitle}>{activity.title}</Text><Text style={styles.activityMeta}>{activity.category} · {plan.currency} {activity.cost}</Text></View></View>)}</View></View>)}<Pressable style={[styles.saveButton, saved && styles.saved]} onPress={saveTrip} disabled={busy || saved}><Text style={styles.saveText}>{saved ? "Trip saved to your collection" : "Save this itinerary"}</Text><Text style={styles.saveArrow}>↗</Text></Pressable></View> : null}
-    </ScrollView>
-  </View></SafeAreaView>;
+  return (
+    <SafeAreaView style={styles.safe}>
+      <AppHeader active="plan" />
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <View style={styles.inner}>
+          {/* Hero */}
+          <Text style={common.kicker}>THE ESCAPE DESK</Text>
+          <Text style={styles.title}>Where to this weekend?</Text>
+          <Text style={styles.subtitle}>
+            Describe the vibe — destination, people, budget — and NOW drafts a
+            day-by-day escape in seconds.
+          </Text>
+
+          {/* Quick prompts */}
+          <Text style={styles.sectionLabel}>START WITH A FEELING</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Surprise me with a random weekend"
+              onPress={surprise}
+              style={[styles.chip, styles.chipGold]}
+            >
+              <Text style={styles.chipGoldText}>✦ Surprise me</Text>
+            </Pressable>
+            {QUICK_PROMPTS.map((item) => (
+              <Pressable
+                key={item.label}
+                accessibilityRole="button"
+                onPress={() => setMessage(item.prompt)}
+                style={styles.chip}
+              >
+                <Text style={styles.chipDot}>●</Text>
+                <Text style={styles.chipText}>{item.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          {/* Trip window — compact scheduling card */}
+          <View style={styles.block}>
+            <ScheduleCard value={tripWindow} onChange={setTripWindow} />
+          </View>
+
+          {/* Composer */}
+          <View style={styles.composerWrap}>
+            <BorderGlow
+              backgroundColor={colors.surface}
+              borderRadius={20}
+              glowColor="7 90 62"
+              colors={["#FF8E70", "#FF6B57", "#FFC98F"]}
+              fillOpacity={0.35}
+              edgeSensitivity={25}
+              glowRadius={36}
+              glowIntensity={1.1}
+              animated
+            >
+              <View style={styles.composerInner}>
+                <View style={styles.composerTop}>
+                  <Text style={styles.composerLabel}>DESCRIBE YOUR ESCAPE</Text>
+                  <Text style={styles.composerHint}>✦ AI concierge</Text>
+                </View>
+                <TextInput
+                  accessibilityLabel="Trip request"
+                  multiline
+                  placeholder="A quiet hill weekend for two, under ₹10,000…"
+                  placeholderTextColor={colors.faint}
+                  value={message}
+                  onChangeText={setMessage}
+                  style={styles.input}
+                />
+                <Button
+                  title="Build my itinerary"
+                  arrow
+                  loading={busy}
+                  disabled={!message.trim()}
+                  onPress={() => send()}
+                  style={styles.build}
+                />
+              </View>
+            </BorderGlow>
+          </View>
+
+          {error ? (
+            <View style={styles.banner}>
+              <Text style={styles.bannerText}>{error}</Text>
+            </View>
+          ) : null}
+
+          {busy ? (
+            <View style={styles.block}>
+              <ThinkingCard />
+            </View>
+          ) : null}
+
+          {!busy && reply ? (
+            <FadeIn id={planId}>
+              <View style={styles.response}>
+                <View style={styles.responseMark}>
+                  <Text style={styles.responseMarkText}>N</Text>
+                </View>
+                <View style={styles.responseCopy}>
+                  <Text style={styles.responseLabel}>NOW SAYS</Text>
+                  <Text style={styles.reply}>{reply}</Text>
+                </View>
+              </View>
+            </FadeIn>
+          ) : null}
+
+          {!busy && plan ? (
+            <FadeIn id={planId}>
+              <View style={styles.block}>
+                <ItineraryCard
+                  plan={plan}
+                  footer={
+                    saved ? (
+                      <View style={styles.savedRow}>
+                        <View style={styles.savedBadge}>
+                          <Text style={styles.savedBadgeText}>✓ Saved to your collection</Text>
+                        </View>
+                        <Button title="View in Trips" variant="secondary" onPress={() => router.push("/trips")} />
+                      </View>
+                    ) : (
+                      <View style={styles.saveRow}>
+                        <Button title="Save this itinerary" arrow loading={saving} onPress={saveTrip} style={styles.saveBtn} />
+                        <Button title="Start over" variant="ghost" onPress={() => { setPlan(null); setReply(""); setMessage(""); sessionRef.current = `now-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }} />
+                      </View>
+                    )
+                  }
+                />
+              </View>
+            </FadeIn>
+          ) : null}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: "#f2eee6" }, page: { flex: 1, maxWidth: 900, width: "100%", alignSelf: "center" }, nav: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 28, paddingVertical: 18, backgroundColor: "#f2eee6", borderBottomWidth: 1, borderBottomColor: "#ddd5c8" }, logo: { flexDirection: "row", alignItems: "center", height: 26 }, logoLetter: { color: "#c94d38", fontWeight: "800", letterSpacing: 3, fontSize: 18 }, globe: { color: "#c94d38", fontSize: 18, lineHeight: 21, marginHorizontal: 1 }, navLinks: { flexDirection: "row", alignItems: "center", gap: 18 }, navText: { color: "#615c54", fontSize: 13, fontWeight: "700" }, sos: { backgroundColor: "#9f3835", borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7 }, sosText: { color: "#fff", fontSize: 11, fontWeight: "800" }, content: { padding: 22, paddingBottom: 70 }, hero: { minHeight: 310, backgroundColor: "#dbe1d1", borderRadius: 24, overflow: "hidden", padding: 26, justifyContent: "space-between", position: "relative" }, sun: { position: "absolute", width: 190, height: 190, borderRadius: 95, right: -45, top: -55, backgroundColor: "#e7b85f", opacity: 0.8 }, heroCopy: { maxWidth: 610 }, kicker: { color: "#526b52", fontSize: 11, fontWeight: "800", letterSpacing: 1.5 }, title: { color: "#28372b", fontSize: 42, lineHeight: 46, fontWeight: "800", marginTop: 12 }, subtitle: { color: "#566052", fontSize: 16, lineHeight: 24, maxWidth: 540, marginTop: 14 }, route: { flexDirection: "row", alignItems: "center", gap: 18, marginTop: 26 }, routeLabel: { color: "#73806e", fontSize: 10, fontWeight: "800", letterSpacing: 1.2 }, routeValue: { color: "#28372b", fontSize: 13, fontWeight: "700", marginTop: 4 }, routeArrow: { color: "#c94d38", fontSize: 26 }, sectionLabel: { color: "#82796c", fontSize: 10, fontWeight: "800", letterSpacing: 1.5, marginTop: 28, marginBottom: 10 }, chips: { gap: 10, paddingBottom: 3 }, chip: { backgroundColor: "#fffaf2", borderWidth: 1, borderColor: "#e0d6c5", borderRadius: 30, paddingHorizontal: 14, paddingVertical: 11, flexDirection: "row", alignItems: "center", gap: 7 }, chipDot: { color: "#c94d38", fontSize: 10 }, chipText: { color: "#514c44", fontSize: 13, fontWeight: "700" }, composer: { backgroundColor: "#fffaf2", borderWidth: 1, borderColor: "#e0d6c5", borderRadius: 18, padding: 18, marginTop: 22 }, composerTop: { flexDirection: "row", justifyContent: "space-between" }, composerLabel: { color: "#82796c", fontSize: 10, fontWeight: "800", letterSpacing: 1.4 }, composerHint: { color: "#73906f", fontSize: 11, fontWeight: "700" }, input: { minHeight: 78, color: "#302e2a", fontSize: 17, lineHeight: 24, paddingTop: 14, paddingBottom: 14 }, button: { minHeight: 48, borderRadius: 10, backgroundColor: "#c94d38", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 12 }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: "#fff", fontSize: 15, fontWeight: "800" }, buttonArrow: { color: "#fff", fontSize: 20 }, response: { flexDirection: "row", gap: 12, marginVertical: 24, paddingHorizontal: 3 }, responseMark: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#526b52", alignItems: "center", justifyContent: "center" }, responseMarkText: { color: "#fff", fontWeight: "800", fontSize: 12 }, responseCopy: { flex: 1 }, responseLabel: { color: "#526b52", fontSize: 10, fontWeight: "800", letterSpacing: 1.4 }, reply: { color: "#514c44", fontSize: 15, lineHeight: 23, marginTop: 5 }, plan: { backgroundColor: "#fffaf2", borderWidth: 1, borderColor: "#e0d6c5", borderRadius: 18, padding: 20 }, planHeader: { flexDirection: "row", justifyContent: "space-between", gap: 14 }, planEyebrow: { color: "#82796c", fontSize: 10, fontWeight: "800", letterSpacing: 1.4 }, planTitle: { color: "#302e2a", fontSize: 25, lineHeight: 30, fontWeight: "800", marginTop: 7, maxWidth: 500 }, destination: { color: "#c94d38", fontSize: 14, fontWeight: "800", marginTop: 4 }, budgetBadge: { backgroundColor: "#e6eee0", borderRadius: 10, padding: 10, alignSelf: "flex-start", minWidth: 86 }, budgetValue: { color: "#526b52", fontSize: 12, fontWeight: "800" }, budgetLabel: { color: "#71806c", fontSize: 11, marginTop: 3 }, summary: { color: "#615c54", fontSize: 14, lineHeight: 22, marginTop: 16, paddingBottom: 17, borderBottomWidth: 1, borderBottomColor: "#e7ded0" }, day: { flexDirection: "row", gap: 14, paddingTop: 18 }, dayBadge: { width: 35, height: 35, borderRadius: 18, backgroundColor: "#f0d8cd", alignItems: "center", justifyContent: "center" }, dayNumber: { color: "#c94d38", fontSize: 11, fontWeight: "800" }, dayBody: { flex: 1 }, dayTitle: { color: "#302e2a", fontWeight: "800", fontSize: 15, marginBottom: 8 }, activity: { flexDirection: "row", gap: 12, paddingVertical: 7 }, activityTime: { color: "#9b9285", fontSize: 12, width: 43, paddingTop: 2 }, activityTitle: { color: "#514c44", fontSize: 14, fontWeight: "700" }, activityMeta: { color: "#938d83", fontSize: 11, marginTop: 2 }, saveButton: { backgroundColor: "#526b52", minHeight: 49, borderRadius: 10, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 10, marginTop: 20 }, saved: { backgroundColor: "#6e8b6a" }, saveText: { color: "#fff", fontSize: 14, fontWeight: "800" }, saveArrow: { color: "#fff", fontSize: 18 } });
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+  scroll: { flexGrow: 1, padding: spacing.lg, paddingBottom: 64 },
+  inner: { width: "100%", maxWidth: 900, alignSelf: "center" },
+  title: { color: colors.text, fontSize: 34, fontWeight: "800", marginTop: 10 },
+  subtitle: { color: colors.muted, fontSize: type.body, lineHeight: 24, marginTop: 8, maxWidth: 620 },
+  sectionLabel: { color: colors.faint, fontSize: type.kicker, fontWeight: "800", letterSpacing: 1.6, marginTop: spacing.lg, marginBottom: 10 },
+  chips: { gap: 10, paddingBottom: 4 },
+  chip: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  chipGold: { backgroundColor: colors.goldSoft, borderColor: colors.goldBorder },
+  chipGoldText: { color: colors.gold, fontSize: 13, fontWeight: "800" },
+  chipDot: { color: colors.gold, fontSize: 9 },
+  chipText: { color: colors.textDim, fontSize: 13, fontWeight: "700" },
+  composerWrap: { marginTop: spacing.md },
+  composerInner: { padding: spacing.lg },
+  composerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  composerLabel: { color: colors.faint, fontSize: type.kicker, fontWeight: "800", letterSpacing: 1.6 },
+  composerHint: { color: colors.gold, fontSize: type.small, fontWeight: "700" },
+  input: { minHeight: 88, color: colors.text, fontSize: 17, lineHeight: 25, paddingVertical: 14, textAlignVertical: "top" },
+  build: { width: "100%" },
+  banner: {
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.md,
+    padding: 14,
+    marginTop: spacing.md,
+  },
+  bannerText: { color: colors.danger, fontSize: type.small, lineHeight: 20 },
+  block: { marginTop: spacing.md },
+  response: { flexDirection: "row", gap: 12, marginTop: spacing.lg, paddingHorizontal: 2 },
+  responseMark: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.goldSoft,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  responseMarkText: { color: colors.gold, fontWeight: "800", fontSize: 13 },
+  responseCopy: { flex: 1 },
+  responseLabel: { color: colors.gold, fontSize: type.kicker, fontWeight: "800", letterSpacing: 1.6 },
+  reply: { color: colors.textDim, fontSize: 15, lineHeight: 23, marginTop: 5 },
+  saveRow: { gap: 4 },
+  saveBtn: { width: "100%" },
+  savedRow: { gap: 10 },
+  savedBadge: {
+    backgroundColor: colors.successSoft,
+    borderWidth: 1,
+    borderColor: colors.success,
+    borderRadius: radius.md,
+    padding: 12,
+    alignItems: "center",
+  },
+  savedBadgeText: { color: colors.success, fontSize: type.small, fontWeight: "700" },
+});

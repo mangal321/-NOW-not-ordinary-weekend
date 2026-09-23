@@ -1,16 +1,17 @@
 from datetime import datetime, timedelta, timezone
-from hashlib import sha256
+from hashlib import pbkdf2_hmac, sha256
 import hmac
 import json
 import os
 import secrets
+import time
+from pathlib import Path
 from typing import Any, Optional
 
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -19,11 +20,118 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 SECRET = os.getenv("JWT_SECRET", "local-development-secret")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 claude = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"]) if os.getenv("ANTHROPIC_API_KEY") else None
+
+# --- Persistence: MongoDB when reachable (durable across restarts), else a JSON file. ---
+DB_PATH = Path(os.getenv("DB_PATH", str(Path(__file__).resolve().parent / "now_db.json")))
 users: dict[str, dict[str, Any]] = {}
 trips: dict[str, dict[str, Any]] = {}
 expenses: dict[str, dict[str, Any]] = {}
 sessions: dict[str, list[dict[str, str]]] = {}
-auth_scheme = HTTPBearer(auto_error=False)
+
+_mongo_collection: Any = None
+try:  # Optional Mongo backing — the app works fine without it.
+    if os.getenv("MONGO_URL"):
+        from pymongo import MongoClient
+
+        _client = MongoClient(os.getenv("MONGO_URL"), serverSelectionTimeoutMS=2500, tz_aware=True)
+        _client.admin.command("ping")
+        _mongo_collection = _client[os.getenv("DB_NAME", "now")]["state"]
+        print("Storage: MongoDB connected (durable).")
+except Exception as error:
+    _mongo_collection = None
+    print(f"Storage: MongoDB unavailable ({error.__class__.__name__}); using JSON file {DB_PATH.name}.")
+
+
+def _state() -> dict[str, Any]:
+    return {"users": users, "trips": trips, "expenses": expenses, "sessions": sessions}
+
+
+def load_db() -> None:
+    if _mongo_collection is not None:
+        try:
+            document = _mongo_collection.find_one({"_id": "state"})
+            if document and "data" in document:
+                payload = document["data"]
+                users.update(payload.get("users", {}))
+                trips.update(payload.get("trips", {}))
+                expenses.update(payload.get("expenses", {}))
+                sessions.update(payload.get("sessions", {}))
+                return
+        except Exception as error:
+            print(f"Warning: Mongo load failed ({error.__class__.__name__}); trying JSON file.")
+    try:
+        if DB_PATH.exists():
+            data = json.loads(DB_PATH.read_text())
+            users.update(data.get("users", {}))
+            trips.update(data.get("trips", {}))
+            expenses.update(data.get("expenses", {}))
+            sessions.update(data.get("sessions", {}))
+    except Exception as error:
+        print(f"Warning: could not load {DB_PATH}: {error}. Starting with empty stores.")
+
+
+def save_db() -> None:
+    payload = _state()
+    if _mongo_collection is not None:
+        try:
+            _mongo_collection.update_one({"_id": "state"}, {"$set": {"data": payload}}, upsert=True)
+            return
+        except Exception as error:
+            print(f"Warning: Mongo save failed ({error.__class__.__name__}); writing JSON file instead.")
+    try:
+        tmp = DB_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload))
+        tmp.replace(DB_PATH)
+    except Exception as error:
+        print(f"Warning: could not save {DB_PATH}: {error}")
+
+
+load_db()
+
+# --- Passwords: salted PBKDF2-SHA256 (260k iterations) + legacy hash migration. ---
+PBKDF2_ITERATIONS = 260_000
+
+
+def _legacy_digest(value: str) -> str:
+    return sha256(f"{SECRET}:{value}".encode()).hexdigest()
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    derived = pbkdf2_hmac("sha256", f"{SECRET}:{password}".encode(), salt.encode(), PBKDF2_ITERATIONS)
+    return f"pbkdf2${PBKDF2_ITERATIONS}${salt}${derived.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    if stored.startswith("pbkdf2$"):
+        try:
+            _, iterations, salt, expected = stored.split("$")
+            derived = pbkdf2_hmac("sha256", f"{SECRET}:{password}".encode(), salt.encode(), int(iterations))
+            return hmac.compare_digest(derived.hex(), expected)
+        except (ValueError, TypeError):
+            return False
+    return hmac.compare_digest(stored, _legacy_digest(password))
+
+
+def needs_rehash(stored: str) -> bool:
+    return not stored.startswith("pbkdf2$")
+
+
+# --- Light in-memory rate limiting (per process). ---
+_rate_buckets: dict[str, list[float]] = {}
+
+
+def rate_limit(key: str, limit: int, window_seconds: float = 60.0) -> None:
+    now = time.time()
+    bucket = [stamp for stamp in _rate_buckets.get(key, []) if now - stamp < window_seconds]
+    if len(bucket) >= limit:
+        raise HTTPException(429, "Too many requests — please slow down and try again shortly.")
+    bucket.append(now)
+    _rate_buckets[key] = bucket
+    if len(_rate_buckets) > 5000:  # keep the bucket map bounded
+        cutoff = now - 300
+        for stale in [k for k, stamps in _rate_buckets.items() if not stamps or stamps[-1] < cutoff]:
+            _rate_buckets.pop(stale, None)
 
 class Signup(BaseModel):
     email: str
@@ -57,8 +165,10 @@ def digest(value: str) -> str:
 
 
 # Local demo account so the first run has a usable login flow.
-demo_user = {"id": "local-demo", "email": "vedant@gamil.com", "name": "Vedant", "interests": [], "home_city": None, "password": digest("123456")}
-users[demo_user["id"]] = demo_user
+if "local-demo" not in users:
+    demo_user = {"id": "local-demo", "email": "vedant@gamil.com", "name": "Vedant", "interests": [], "home_city": None, "password": hash_password("123456")}
+    users[demo_user["id"]] = demo_user
+    save_db()
 
 
 def public(user: dict[str, Any]) -> dict[str, Any]:
@@ -72,10 +182,27 @@ def token(user_id: str) -> str:
     return f"{payload}.{signature}"
 
 
-def user_from_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(auth_scheme)) -> dict[str, Any]:
-    if not credentials:
+def raw_token(request: Request) -> Optional[str]:
+    """Read the auth token from X-NOW-Token (preferred) or Authorization: Bearer.
+
+    Some hosting proxies strip the Authorization header; the custom header
+    survives them. Both carry the same opaque token.
+    """
+    custom = (request.headers.get("x-now-token") or "").strip()
+    if custom:
+        return custom
+    auth = (request.headers.get("authorization") or "").strip()
+    scheme, _, credentials = auth.partition(" ")
+    if scheme.lower() == "bearer" and credentials.strip():
+        return credentials.strip()
+    return None
+
+
+def user_from_token(request: Request) -> dict[str, Any]:
+    raw = raw_token(request)
+    if not raw:
         raise HTTPException(401, "Authentication required")
-    parts = credentials.credentials.split(".")
+    parts = raw.split(".")
     if len(parts) != 3:
         raise HTTPException(401, "Invalid token")
     user_id, expires, signature = parts
@@ -154,18 +281,25 @@ async def health() -> dict[str, str]:
 @app.post("/api/auth/signup")
 async def signup(payload: Signup) -> dict[str, Any]:
     email = payload.email.strip().lower()
+    rate_limit(f"signup:{email}", 10)
     if any(item["email"] == email for item in users.values()):
         raise HTTPException(409, "Email already registered")
-    user = {"id": secrets.token_urlsafe(12), "email": email, "name": payload.name.strip(), "interests": [], "home_city": None, "password": digest(payload.password)}
+    user = {"id": secrets.token_urlsafe(12), "email": email, "name": payload.name.strip(), "interests": [], "home_city": None, "password": hash_password(payload.password)}
     users[user["id"]] = user
+    save_db()
     return {"token": token(user["id"]), "user": public(user)}
 
 
 @app.post("/api/auth/login")
 async def login(payload: Login) -> dict[str, Any]:
-    user = next((item for item in users.values() if item["email"] == payload.email.strip().lower()), None)
-    if not user or not hmac.compare_digest(user["password"], digest(payload.password)):
+    email = payload.email.strip().lower()
+    rate_limit(f"login:{email}", 10)
+    user = next((item for item in users.values() if item["email"] == email), None)
+    if not user or not verify_password(payload.password, user["password"]):
         raise HTTPException(401, "Invalid email or password")
+    if needs_rehash(user["password"]):
+        user["password"] = hash_password(payload.password)
+        save_db()
     return {"token": token(user["id"]), "user": public(user)}
 
 
@@ -177,6 +311,7 @@ async def me(user: dict[str, Any] = Depends(user_from_token)) -> dict[str, Any]:
 @app.patch("/api/auth/me")
 async def update_me(payload: Profile, user: dict[str, Any] = Depends(user_from_token)) -> dict[str, Any]:
     user.update(payload.model_dump())
+    save_db()
     return public(user)
 
 
@@ -184,13 +319,25 @@ async def update_me(payload: Profile, user: dict[str, Any] = Depends(user_from_t
 async def chat(payload: Chat, user: dict[str, Any] = Depends(user_from_token)) -> dict[str, Any]:
     key = f"{user['id']}:{payload.session_id}"
     history = sessions.setdefault(key, [])
+    rate_limit(f"chat:{user['id']}", 30)
+    # Personalize the request with the traveller's saved profile so plans
+    # respect their home city and interests (used by local + Claude paths).
+    profile_bits = []
+    if user.get("home_city"):
+        profile_bits.append(f"home city: {user['home_city']}")
+    if user.get("interests"):
+        profile_bits.append(f"interests: {', '.join(user['interests'])}")
+    message = payload.message
+    if profile_bits:
+        message = f"[Traveller profile — {'; '.join(profile_bits)}]\n\n{message}"
     try:
-        reply, plan = await claude_itinerary(payload.message, history)
+        reply, plan = await claude_itinerary(message, history)
     except (json.JSONDecodeError, KeyError, TypeError) as error:
         raise HTTPException(502, "Claude returned an invalid itinerary. Please try again.") from error
     except Exception as error:
         raise HTTPException(502, "Claude is unavailable right now. Please try again.") from error
     history.extend([{"role": "user", "content": payload.message}, {"role": "assistant", "content": reply}])
+    save_db()
     return {"reply": reply, "itinerary": plan, "provider": "claude" if claude else "local"}
 
 
@@ -203,6 +350,7 @@ async def history(session_id: str, user: dict[str, Any] = Depends(user_from_toke
 async def create_trip(data: dict[str, Any], user: dict[str, Any] = Depends(user_from_token)) -> dict[str, Any]:
     trip = {"id": secrets.token_urlsafe(12), "user_id": user["id"], "itinerary": data, "created_at": datetime.now(timezone.utc).isoformat()}
     trips[trip["id"]] = trip
+    save_db()
     return trip
 
 
@@ -225,6 +373,7 @@ async def delete_trip(trip_id: str, user: dict[str, Any] = Depends(user_from_tok
     if not trip or trip["user_id"] != user["id"]:
         raise HTTPException(404, "Trip not found")
     del trips[trip_id]
+    save_db()
     return {"deleted": True}
 
 
@@ -235,6 +384,7 @@ async def add_expense(trip_id: str, payload: Expense, user: dict[str, Any] = Dep
         raise HTTPException(404, "Trip not found")
     item = {"id": secrets.token_urlsafe(12), "trip_id": trip_id, **payload.model_dump()}
     expenses[item["id"]] = item
+    save_db()
     return item
 
 
@@ -253,4 +403,5 @@ async def delete_expense(expense_id: str, user: dict[str, Any] = Depends(user_fr
     if not item or not trip or trip["user_id"] != user["id"]:
         raise HTTPException(404, "Expense not found")
     del expenses[expense_id]
+    save_db()
     return {"deleted": True}

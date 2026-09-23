@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Expo / web build output
+dist/
+.expo/
+web-build/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local env (keep .env.example committed, never real secrets)
+.env
+.env2
+*.local
+
+# Local backend database (JSON file store — accounts, trips, expenses)
+now_db.json
+now_db.tmp
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

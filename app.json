@@ -5,7 +5,19 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "now",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FAF7F1",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "backgroundColor": "#FAF7F1",
+      "resizeMode": "contain"
+    },
     "plugins": ["expo-router", "expo-location"],
-    "web": { "bundler": "metro" }
+    "web": {
+      "bundler": "metro",
+      "backgroundColor": "#FAF7F1",
+      "favicon": "./assets/images/favicon.png"
+    }
   }
 }

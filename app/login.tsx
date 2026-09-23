@@ -1,34 +1,34 @@
 import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { api } from "../src/api";
-import { setAuthToken } from "../src/session";
+import { consumeSessionExpired, setAuthToken } from "../src/session";
 import { colors, type } from "../src/theme";
 import { AuthShell } from "../src/components/AuthShell";
 import { Button } from "../src/components/Button";
 import { TextField } from "../src/components/TextField";
 
-export default function Signup() {
+export default function Login() {
   const router = useRouter();
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [notice] = useState(() => consumeSessionExpired());
 
   async function submit() {
-    if (!name.trim() || !email.trim() || password.length < 6) {
-      setError("Enter your name, email, and a password of at least 6 characters.");
+    if (!email.trim() || !password) {
+      setError("Enter your email and password to continue.");
       return;
     }
     setBusy(true);
     setError("");
     try {
-      const result = await api.signup(email.trim(), password, name.trim());
+      const result = await api.login(email.trim(), password);
       setAuthToken(result.token);
-      router.replace("/interests");
+      router.replace("/planner");
     } catch (value) {
-      setError(value instanceof Error ? value.message : "Could not create your account. Please try again.");
+      setError(value instanceof Error ? value.message : "Could not sign in. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -36,31 +36,28 @@ export default function Signup() {
 
   return (
     <AuthShell
-      kicker="JOIN THE CLUB"
-      title="Create your account"
-      subtitle="Free forever to start. Your first unforgettable weekend is minutes away."
+      kicker="WELCOME BACK"
+      title="Sign in"
+      subtitle="Your next escape is waiting. Pick up right where you left off."
       footer={
         <Text style={styles.footer}>
-          Already have an account?{" "}
-          <Text style={styles.link} onPress={() => router.push("/login")}>
-            Sign in
+          New to NOW?{" "}
+          <Text style={styles.link} onPress={() => router.push("/signup")}>
+            Create a free account
           </Text>
         </Text>
       }
     >
+      {notice ? (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>Your session expired. Please sign in again to continue.</Text>
+        </View>
+      ) : null}
       {error ? (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>{error}</Text>
         </View>
       ) : null}
-      <TextField
-        label="Your name"
-        value={name}
-        onChangeText={setName}
-        placeholder="Aarav Sharma"
-        autoCapitalize="words"
-        returnKeyType="next"
-      />
       <TextField
         label="Email"
         value={email}
@@ -74,18 +71,29 @@ export default function Signup() {
         label="Password"
         value={password}
         onChangeText={setPassword}
-        placeholder="6+ characters"
+        placeholder="Your password"
         secure
         returnKeyType="go"
         onSubmitEditing={submit}
       />
-      <Button title="Create free account" arrow loading={busy} onPress={submit} style={styles.submit} />
-      <Text style={styles.fine}>By continuing you agree to travel more and regret less. ✦</Text>
+      <Button title="Sign in" arrow loading={busy} onPress={submit} style={styles.submit} />
+      <Pressable onPress={() => router.push("/onboarding")} accessibilityRole="button">
+        <Text style={styles.tour}>First time here? Take the tour →</Text>
+      </Pressable>
     </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
+  notice: {
+    backgroundColor: colors.goldSoft,
+    borderWidth: 1,
+    borderColor: colors.goldBorder,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  noticeText: { color: colors.gold, fontSize: type.small, lineHeight: 20 },
   banner: {
     backgroundColor: colors.dangerSoft,
     borderWidth: 1,
@@ -96,7 +104,7 @@ const styles = StyleSheet.create({
   },
   bannerText: { color: colors.danger, fontSize: type.small, lineHeight: 20 },
   submit: { marginTop: 4, width: "100%" },
-  fine: { color: colors.faint, fontSize: type.small, textAlign: "center", marginTop: 16, lineHeight: 20 },
+  tour: { color: colors.faint, fontSize: type.small, textAlign: "center", marginTop: 16 },
   footer: { color: colors.muted, fontSize: type.small },
   link: { color: colors.gold, fontWeight: "700" },
 });

@@ -3,3 +3,4 @@ uvicorn[standard]>=0.25,<1
 python-dotenv>=1.0,<2
 anthropic>=0.64,<1
 pytest>=8,<9
+pymongo>=4.6,<5
