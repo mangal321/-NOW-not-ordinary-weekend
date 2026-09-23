@@ -5,9 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "now",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#0A0C10",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FAF7F1",
+    "icon": "./assets/images/icon.png",
     "plugins": ["expo-router", "expo-location"],
-    "web": { "bundler": "metro", "backgroundColor": "#0A0C10" }
+    "web": {
+      "bundler": "metro",
+      "backgroundColor": "#FAF7F1",
+      "favicon": "./assets/images/favicon.png"
+    }
   }
 }

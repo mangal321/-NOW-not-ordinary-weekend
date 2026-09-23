@@ -1,39 +1,37 @@
-import { StyleSheet, Text, View } from "react-native";
-import { colors } from "../theme";
+import { Image, StyleSheet } from "react-native";
+
+/**
+ * Brand assets generated from assets/brand/now-logo.png (master).
+ *  - mark:   the N☀W sunrise monogram, no tagline (nav / compact spots)
+ *  - lockup: full logo with "NOT ORDINARY WEEKEND" tagline (auth panel hero)
+ */
+const MARK = require("../../assets/brand/now-mark.png");
+const LOCKUP = require("../../assets/brand/now-lockup.png");
 
 export function Logo({ compact = false }: { compact?: boolean }) {
+  if (compact) {
+    return (
+      <Image
+        source={MARK}
+        style={styles.mark}
+        resizeMode="contain"
+        accessibilityLabel="NOW"
+        accessibilityRole="image"
+      />
+    );
+  }
   return (
-    <View style={styles.row}>
-      <View style={[styles.mark, compact && styles.markCompact]}>
-        <Text style={[styles.markText, compact && styles.markTextCompact]}>✦</Text>
-      </View>
-      <View>
-        <Text style={[styles.word, compact && styles.wordCompact]}>
-          NOW<Text style={styles.dot}>.</Text>
-        </Text>
-        {!compact ? <Text style={styles.tag}>NOT ORDINARY WEEKEND</Text> : null}
-      </View>
-    </View>
+    <Image
+      source={LOCKUP}
+      style={styles.lockup}
+      resizeMode="contain"
+      accessibilityLabel="NOW — not ordinary weekend"
+      accessibilityRole="image"
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 12 },
-  mark: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: colors.goldSoft,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  markCompact: { width: 34, height: 34, borderRadius: 11 },
-  markText: { color: colors.gold, fontSize: 20 },
-  markTextCompact: { fontSize: 16 },
-  word: { color: colors.text, fontSize: 26, fontWeight: "800", letterSpacing: 4 },
-  wordCompact: { fontSize: 19, letterSpacing: 3 },
-  dot: { color: colors.gold },
-  tag: { color: colors.faint, fontSize: 9, fontWeight: "700", letterSpacing: 2.2, marginTop: 2 },
+  mark: { width: 78, height: 40 },
+  lockup: { height: 84, aspectRatio: 610 / 360, maxWidth: "100%" },
 });
