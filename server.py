@@ -232,8 +232,18 @@ async def update_me(payload: Profile, user: dict[str, Any] = Depends(user_from_t
 async def chat(payload: Chat, user: dict[str, Any] = Depends(user_from_token)) -> dict[str, Any]:
     key = f"{user['id']}:{payload.session_id}"
     history = sessions.setdefault(key, [])
+    # Personalize the request with the traveller's saved profile so plans
+    # respect their home city and interests (used by local + Claude paths).
+    profile_bits = []
+    if user.get("home_city"):
+        profile_bits.append(f"home city: {user['home_city']}")
+    if user.get("interests"):
+        profile_bits.append(f"interests: {', '.join(user['interests'])}")
+    message = payload.message
+    if profile_bits:
+        message = f"[Traveller profile — {'; '.join(profile_bits)}]\n\n{message}"
     try:
-        reply, plan = await claude_itinerary(payload.message, history)
+        reply, plan = await claude_itinerary(message, history)
     except (json.JSONDecodeError, KeyError, TypeError) as error:
         raise HTTPException(502, "Claude returned an invalid itinerary. Please try again.") from error
     except Exception as error:
