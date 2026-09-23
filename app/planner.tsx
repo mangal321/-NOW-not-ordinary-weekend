@@ -17,6 +17,7 @@ import { AppHeader } from "../src/components/AppHeader";
 import BorderGlow from "../src/components/BorderGlow";
 import { Button } from "../src/components/Button";
 import { Itinerary, ItineraryCard } from "../src/components/ItineraryCard";
+import { ScheduleCard, TripWindow, DEFAULT_TRIP_WINDOW } from "../src/components/ScheduleCard";
 import { ThinkingCard } from "../src/components/ThinkingCard";
 
 const QUICK_PROMPTS = [
@@ -56,12 +57,14 @@ export default function Planner() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [tripWindow, setTripWindow] = useState<TripWindow>(DEFAULT_TRIP_WINDOW);
 
   if (!authToken) return <Redirect href="/login" />;
 
   async function send(override?: string) {
-    const text = (override ?? message).trim();
-    if (!authToken || !text || busy) return;
+    const base = (override ?? message).trim();
+    if (!authToken || !base || busy) return;
+    const text = `${base} (leave ${tripWindow.start}, return ${tripWindow.end} — ${tripWindow.duration.toLowerCase()})`;
     setBusy(true);
     setError("");
     setReply("");
@@ -135,6 +138,11 @@ export default function Planner() {
               </Pressable>
             ))}
           </ScrollView>
+
+          {/* Trip window — compact scheduling card */}
+          <View style={styles.block}>
+            <ScheduleCard value={tripWindow} onChange={setTripWindow} />
+          </View>
 
           {/* Composer */}
           <View style={styles.composerWrap}>
