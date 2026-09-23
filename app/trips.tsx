@@ -63,6 +63,11 @@ function TripCard({ trip, index, onPress }: { trip: any; index: number; onPress:
             <Text style={[styles.destination, { color: spine.accent }]}>
               {plan.destination ?? "Somewhere with more sky"}
             </Text>
+            {plan.window?.dateLabel ? (
+              <View style={styles.whenChip}>
+                <Text style={styles.whenText}>◈ {plan.window.dateLabel}</Text>
+              </View>
+            ) : null}
             {plan.summary ? (
               <Text style={styles.cardSummary} numberOfLines={2}>
                 {plan.summary}
@@ -201,6 +206,17 @@ const styles = StyleSheet.create({
   cardMain: { gap: 2 },
   cardTitle: { color: colors.text, fontSize: 25, lineHeight: 30, fontWeight: "800" },
   destination: { fontSize: 15, fontWeight: "800", marginTop: 5 },
+  whenChip: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  whenText: { color: colors.muted, fontSize: 11, fontWeight: "800" },
   cardSummary: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 9 },
   cardBottom: { flexDirection: "row", alignItems: "flex-end", gap: 28, marginTop: 12 },
   metaLabel: { color: colors.faint, fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },

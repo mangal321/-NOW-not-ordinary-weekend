@@ -3,7 +3,8 @@ import { colors, shadow, spacing } from "../theme";
 
 /**
  * ScheduleCard — compact time-range card (Scheduling-2 pattern):
- * a start select, an end select, and a wrap-around duration chip set.
+ * a start select, an end select, and a wrap-around duration chip set,
+ * bound to the real upcoming weekend's dates.
  * Ported natively to the NOW design system (no shadcn/Tailwind runtime here).
  */
 
@@ -11,13 +12,54 @@ export type TripWindow = {
   start: string;
   end: string;
   duration: string;
+  startDate: string; // ISO yyyy-mm-dd
+  endDate: string; // ISO yyyy-mm-dd
+  dateLabel: string; // "26–28 Sep"
 };
 
-export const DEFAULT_TRIP_WINDOW: TripWindow = {
-  start: "Sat morning",
-  end: "Sun evening",
-  duration: "2 days",
-};
+type DayKey = "friday" | "saturday" | "sunday" | "monday";
+
+function upcomingWeekend(base = new Date()): Record<DayKey, Date> {
+  const offset = (base.getDay() - 5 + 7) % 7; // days since the most recent Friday
+  const friday = new Date(base);
+  friday.setDate(base.getDate() - offset);
+  if (offset > 2) friday.setDate(friday.getDate() + 7); // Mon–Thu → aim at the next weekend
+  const at = (add: number) => {
+    const date = new Date(friday);
+    date.setDate(friday.getDate() + add);
+    return date;
+  };
+  return { friday: at(0), saturday: at(1), sunday: at(2), monday: at(3) };
+}
+
+function iso(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function short(date: Date): string {
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+function makeWindow(start: string, end: string, duration: string): TripWindow {
+  const weekend = upcomingWeekend();
+  const dayFor = (label: string): Date => {
+    if (label.startsWith("Fri")) return weekend.friday;
+    if (label.startsWith("Sat")) return weekend.saturday;
+    if (label.startsWith("Sun")) return weekend.sunday;
+    return weekend.monday;
+  };
+  const startDate = dayFor(start);
+  const endDate = dayFor(end);
+  const dateLabel =
+    startDate.toDateString() === endDate.toDateString()
+      ? short(startDate)
+      : `${short(startDate)} – ${short(endDate)}`;
+  return { start, end, duration, startDate: iso(startDate), endDate: iso(endDate), dateLabel };
+}
+
+export function defaultTripWindow(): TripWindow {
+  return makeWindow("Sat morning", "Sun evening", "2 days");
+}
 
 const STARTS = ["Fri evening", "Sat morning", "Sat afternoon"] as const;
 const ENDS = [
@@ -35,24 +77,24 @@ type Props = {
 
 export function ScheduleCard({ value, onChange }: Props) {
   function pickStart(start: string) {
-    onChange({ ...value, start });
+    onChange(makeWindow(start, value.end, value.duration));
   }
 
   function pickEnd(end: string) {
     const match = ENDS.find((item) => item.label === end);
-    onChange({ ...value, end, duration: match ? match.duration : value.duration });
+    onChange(makeWindow(value.start, end, match ? match.duration : value.duration));
   }
 
   function pickDuration(duration: string) {
     const match = ENDS.find((item) => item.duration === duration);
-    if (match) onChange({ ...value, end: match.label, duration });
+    if (match) onChange(makeWindow(value.start, match.label, duration));
   }
 
   return (
     <View style={styles.card}>
       <View style={styles.head}>
         <Text style={styles.kicker}>TRIP WINDOW</Text>
-        <Text style={styles.hint}>◈ tap to set</Text>
+        <Text style={styles.hint}>◈ {value.dateLabel}</Text>
       </View>
 
       <Text style={styles.label}>Leaving</Text>
@@ -114,7 +156,7 @@ export function ScheduleCard({ value, onChange }: Props) {
 
       <View style={styles.summary}>
         <Text style={styles.summaryText}>
-          {value.start} → {value.end} · {value.duration}
+          {value.start} → {value.end} · {value.dateLabel} · {value.duration}
         </Text>
       </View>
     </View>
@@ -133,7 +175,7 @@ const styles = StyleSheet.create({
 
   head: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
   kicker: { color: colors.gold, fontSize: 11, fontWeight: "800", letterSpacing: 2.2 },
-  hint: { color: colors.faint, fontSize: 11, fontWeight: "600" },
+  hint: { color: colors.teal, fontSize: 11, fontWeight: "700" },
 
   label: {
     color: colors.faint,

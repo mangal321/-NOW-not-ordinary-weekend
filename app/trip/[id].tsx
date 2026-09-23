@@ -18,6 +18,17 @@ import { Button } from "../../src/components/Button";
 /** Day chips rotate through the coastal trio, matching trips and map. */
 const DAY_ACCENTS = [colors.gold, colors.teal, "#F5A65B"] as const;
 
+const EXPENSE_CATEGORIES = ["food", "transport", "stay", "activity", "shopping", "other"] as const;
+
+const CATEGORY_GLYPH: Record<string, string> = {
+  food: "⬔",
+  transport: "➔",
+  stay: "◠",
+  activity: "➤",
+  shopping: "⬓",
+  other: "✦",
+};
+
 export default function TripDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -25,6 +36,7 @@ export default function TripDetail() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [category, setCategory] = useState<string>("food");
   const [busy, setBusy] = useState(true);
 
   const load = useCallback(async () => {
@@ -46,9 +58,15 @@ export default function TripDetail() {
   async function addExpense() {
     const value = Number(amount);
     if (!authToken || !id || !value || value <= 0) return;
-    await api.addExpense(authToken, id, { category: "other", amount: value, note });
+    await api.addExpense(authToken, id, { category, amount: value, note });
     setAmount("");
     setNote("");
+    load();
+  }
+
+  async function removeExpense(expenseId: string) {
+    if (!authToken) return;
+    await api.deleteExpense(authToken, expenseId);
     load();
   }
 
@@ -83,6 +101,7 @@ export default function TripDetail() {
   const spent = expenses.reduce((total, item) => total + Number(item.amount), 0);
   const total = Number(plan.total_budget) || 0;
   const pct = total > 0 ? Math.min(100, Math.round((spent / total) * 100)) : 0;
+  const window_ = plan.window;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -96,6 +115,14 @@ export default function TripDetail() {
         <Text style={styles.destination}>
           {plan.destination} · {plan.duration_days} days · {plan.currency} {plan.total_budget}
         </Text>
+        {window_?.dateLabel ? (
+          <View style={styles.windowChip}>
+            <Text style={styles.windowChipText}>
+              ◈ {window_.dateLabel}
+              {window_.duration ? ` · ${window_.duration}` : ""}
+            </Text>
+          </View>
+        ) : null}
         <Text style={styles.summary}>{plan.summary}</Text>
 
         {(plan.days || []).map((day: any, dayIndex: number) => {
@@ -132,6 +159,27 @@ export default function TripDetail() {
           <View style={styles.track}>
             <View style={[styles.fill, { width: `${pct}%` }]} />
           </View>
+
+          <Text style={styles.expenseLabel}>CATEGORY</Text>
+          <View style={styles.categoryRow}>
+            {EXPENSE_CATEGORIES.map((item) => {
+              const isSelected = category === item;
+              return (
+                <Pressable
+                  key={item}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => setCategory(item)}
+                  style={[styles.categoryChip, isSelected && styles.categoryChipActive]}
+                >
+                  <Text style={isSelected ? styles.categoryTextActive : styles.categoryText}>
+                    {CATEGORY_GLYPH[item]} {item}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           <TextInput
             accessibilityLabel="Expense amount"
             placeholder="Expense amount"
@@ -150,12 +198,22 @@ export default function TripDetail() {
             style={styles.input}
           />
           <Button title="Add expense" onPress={addExpense} style={styles.addButton} />
+
           {expenses.map((expense) => (
             <View key={expense.id} style={styles.expenseRow}>
-              <Text style={styles.expenseDot}>•</Text>
+              <Text style={styles.expenseDot}>{CATEGORY_GLYPH[expense.category] ?? "✦"}</Text>
               <Text style={styles.expense}>
                 {expense.note || expense.category} · {plan.currency} {expense.amount}
+                {expense.category ? `  (${expense.category})` : ""}
               </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Delete expense ${expense.note || expense.category}`}
+                onPress={() => removeExpense(expense.id)}
+                hitSlop={10}
+              >
+                <Text style={styles.expenseDelete}>✕</Text>
+              </Pressable>
             </View>
           ))}
         </View>
@@ -178,6 +236,17 @@ const styles = StyleSheet.create({
 
   title: { color: colors.text, fontSize: 34, lineHeight: 40, fontWeight: "800", marginTop: 8 },
   destination: { color: colors.gold, fontWeight: "800", marginTop: 8, fontSize: 15 },
+  windowChip: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.tealSoft,
+    borderWidth: 1,
+    borderColor: "rgba(14, 138, 123, 0.3)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 10,
+  },
+  windowChipText: { color: colors.teal, fontWeight: "800", fontSize: 12 },
   summary: { color: colors.muted, lineHeight: 23, marginTop: 14 },
 
   day: {
@@ -223,6 +292,28 @@ const styles = StyleSheet.create({
   total: { color: colors.teal, marginTop: 6, marginBottom: 12, fontWeight: "700" },
   track: { height: 8, borderRadius: 4, backgroundColor: colors.surface3, overflow: "hidden", marginBottom: 6 },
   fill: { height: 8, borderRadius: 4, backgroundColor: colors.gold },
+
+  expenseLabel: {
+    color: colors.faint,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  categoryChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface2,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  categoryChipActive: { backgroundColor: colors.teal, borderColor: colors.teal },
+  categoryText: { color: colors.textDim, fontSize: 12, fontWeight: "700", textTransform: "capitalize" },
+  categoryTextActive: { color: "#fff", fontSize: 12, fontWeight: "800", textTransform: "capitalize" },
+
   input: {
     borderColor: colors.border,
     borderWidth: 1,
@@ -234,9 +325,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   addButton: { marginTop: 12 },
-  expenseRow: { flexDirection: "row", gap: 8, marginTop: 12, alignItems: "baseline" },
-  expenseDot: { color: colors.gold, fontWeight: "800" },
+  expenseRow: { flexDirection: "row", gap: 8, marginTop: 12, alignItems: "center" },
+  expenseDot: { color: colors.gold, fontWeight: "800", fontSize: 15 },
   expense: { color: colors.muted, flex: 1 },
+  expenseDelete: { color: colors.faint, fontSize: 14, fontWeight: "700", paddingHorizontal: 6 },
 
   deleteButton: { alignItems: "center", marginTop: spacing.xl, paddingBottom: 30, padding: 8 },
   delete: { color: colors.danger, fontWeight: "700" },

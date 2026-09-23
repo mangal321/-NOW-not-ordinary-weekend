@@ -17,7 +17,7 @@ import { AppHeader } from "../src/components/AppHeader";
 import BorderGlow from "../src/components/BorderGlow";
 import { Button } from "../src/components/Button";
 import { Itinerary, ItineraryCard } from "../src/components/ItineraryCard";
-import { ScheduleCard, TripWindow, DEFAULT_TRIP_WINDOW } from "../src/components/ScheduleCard";
+import { ScheduleCard, TripWindow, defaultTripWindow } from "../src/components/ScheduleCard";
 import { ThinkingCard } from "../src/components/ThinkingCard";
 
 const QUICK_PROMPTS = [
@@ -57,7 +57,7 @@ export default function Planner() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
-  const [tripWindow, setTripWindow] = useState<TripWindow>(DEFAULT_TRIP_WINDOW);
+  const [tripWindow, setTripWindow] = useState<TripWindow>(() => defaultTripWindow());
 
   if (!authToken) return <Redirect href="/login" />;
 
@@ -93,7 +93,7 @@ export default function Planner() {
     setSaving(true);
     setError("");
     try {
-      await api.createTrip(authToken, plan);
+      await api.createTrip(authToken, { ...plan, window: tripWindow });
       setSaved(true);
     } catch (value) {
       setError(value instanceof Error ? value.message : "Could not save this trip. Please try again.");
